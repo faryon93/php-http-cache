@@ -25,6 +25,7 @@ import (
 	"net"
 	"net/rpc"
 	"os"
+	"time"
 
 	"github.com/sirupsen/logrus"
 	"github.com/spiral/goridge"
@@ -43,6 +44,10 @@ var (
 // ---------------------------------------------------------------------------------------
 
 func main() {
+	cacheService := NewCacheService()
+
+	// command line arguments
+	flag.DurationVar(&cacheService.Timeout, "timeout", 2*time.Hour, "timeout for cache entrys")
 	flag.BoolVar(&ForceColors, "colors", false, "force logging with colors")
 	flag.Parse()
 
@@ -56,7 +61,7 @@ func main() {
 		panic(err)
 	}
 
-	err = rpc.RegisterName("Cache", NewCacheService())
+	err = rpc.RegisterName("Cache", cacheService)
 	if err != nil {
 		panic(err)
 	}

@@ -48,6 +48,8 @@ var (
 type CacheService struct {
 	cache map[uint64]*CacheEntry
 	mutex sync.RWMutex
+
+	Timeout time.Duration
 }
 
 type CacheEntry struct {
@@ -57,10 +59,13 @@ type CacheEntry struct {
 	Headers http.Header
 	Ttl     time.Duration
 
+	LastAccess time.Time
+
 	Fetching sync.RWMutex
 	Response string
 	Error    error
 	Hash     string
+	Id       uint64
 }
 
 // ---------------------------------------------------------------------------------------
@@ -93,12 +98,14 @@ func (c *CacheService) Request(body string, r *string) error {
 	if !ok {
 		// construct the new cache entry object
 		entry = &CacheEntry{
-			Method:  strings.ToUpper(request.Method),
-			Url:     request.Url,
-			Headers: make(http.Header),
-			Body:    request.Body,
-			Ttl:     time.Duration(request.Ttl) * time.Second,
-			Hash:    fmt.Sprintf("%x", id),
+			Method:     strings.ToUpper(request.Method),
+			Url:        request.Url,
+			Headers:    make(http.Header),
+			Body:       request.Body,
+			Ttl:        time.Duration(request.Ttl) * time.Second,
+			Hash:       fmt.Sprintf("%x", id),
+			Id:         id,
+			LastAccess: time.Now(),
 		}
 
 		// construct the header map
@@ -127,7 +134,7 @@ func (c *CacheService) Request(body string, r *string) error {
 		// start the fetch task
 		entry.Fetching.Lock()
 		c.cache[id] = entry
-		go entry.task()
+		go entry.task(c)
 	}
 	c.mutex.Unlock()
 
@@ -136,6 +143,7 @@ func (c *CacheService) Request(body string, r *string) error {
 	defer entry.Fetching.RUnlock()
 
 	// return the response and error to the caller
+	entry.LastAccess = time.Now()
 	*r = entry.Response
 	return entry.Error
 }
@@ -144,13 +152,23 @@ func (c *CacheService) Request(body string, r *string) error {
 //  private members
 // ---------------------------------------------------------------------------------------
 
-func (e *CacheEntry) task() {
+func (e *CacheEntry) task(service *CacheService) {
 	first := true
 	client := http.Client{}
 
 	for {
-		// update
-		response, err := e.update(&client)
+		// stop the background fetching task after the configured timeout
+		if service.Timeout > 0 && time.Now().After(e.LastAccess.Add(service.Timeout)) {
+			service.mutex.Lock()
+			delete(service.cache, e.Id)
+			service.mutex.Unlock()
+
+			logrus.Infof("entry %s timed out: purging from cache", e.Hash)
+			return
+		}
+
+		// fetch a fresh copy of the request body
+		response, err := e.fetch(&client)
 		if err != nil {
 			logrus.Errorf("failed to fetch cache entry %s: %s",
 				e.Hash, err.Error())
@@ -171,9 +189,7 @@ func (e *CacheEntry) task() {
 	}
 }
 
-func (e *CacheEntry) update(client *http.Client) (string, error) {
-	start := time.Now()
-
+func (e *CacheEntry) fetch(client *http.Client) (string, error) {
 	// construct the new HTTP requests
 	req, err := http.NewRequest(e.Method, e.Url, strings.NewReader(e.Body))
 	if err != nil {
@@ -193,8 +209,6 @@ func (e *CacheEntry) update(client *http.Client) (string, error) {
 	if err != nil {
 		return "", err
 	}
-
-	logrus.Infof("fetched cache entry %s in %s", e.Hash, time.Since(start))
 
 	return string(body), nil
 }
