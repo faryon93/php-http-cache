@@ -29,11 +29,11 @@ import (
 // ---------------------------------------------------------------------------------------
 
 type CmdRequest struct {
-	Method  string            `json:"method"`
-	Url     string            `json:"url"`
-	Body    string            `json:"body"`
-	Headers map[string]string `json:"headers"`
-	Ttl     int               `json:"ttl"`
+	Method  string   `json:"method"`
+	Url     string   `json:"url"`
+	Body    string   `json:"body"`
+	Headers []string `json:"headers"`
+	Ttl     int      `json:"ttl"`
 }
 
 // ---------------------------------------------------------------------------------------
@@ -42,8 +42,8 @@ type CmdRequest struct {
 
 func (r *CmdRequest) Hash() uint64 {
 	headers := ""
-	for key, val := range r.Headers {
-		headers += key + ":" + val
+	for _, header := range r.Headers {
+		headers += header
 	}
 
 	return xxhash.Sum64String(r.Method + r.Url + r.Body + headers)

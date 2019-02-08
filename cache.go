@@ -82,6 +82,7 @@ func (c *CacheService) Request(body string, r *string) error {
 	var request CmdRequest
 	err := json.Unmarshal([]byte(body), &request)
 	if err != nil {
+		logrus.Warnln("failed to decode command:", err.Error())
 		return err
 	}
 	id := request.Hash()
@@ -99,8 +100,17 @@ func (c *CacheService) Request(body string, r *string) error {
 			Ttl:     time.Duration(request.Ttl) * time.Second,
 			Hash:    fmt.Sprintf("%x", id),
 		}
-		for k, v := range request.Headers {
-			entry.Headers.Add(k, v)
+
+		// construct the header map
+		for i, header := range request.Headers {
+			h := strings.Split(header, ":")
+			if len(h) != 2 {
+				logrus.Warnf("rejeting request: invalid header \"%s\"", header)
+				c.mutex.Unlock()
+				return fmt.Errorf("header[%d] is badly formated", i)
+			}
+
+			entry.Headers.Add(strings.TrimSpace(h[0]), strings.TrimSpace(h[1]))
 		}
 
 		// make sure the ttl is not too low
