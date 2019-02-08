@@ -11,7 +11,10 @@ action "Build Alpine" {
 action "Docker Registry Login" {
   uses = "actions/docker/login@master"
   needs = ["Build Alpine"]
-  secrets = ["DOCKER_USERNAME", "DOCKER_PASSWORD"]
+  secrets = [
+    "DOCKER_USERNAME",
+    "DOCKER_PASSWORD",
+  ]
 }
 
 action "Publish on Docker Registry" {
