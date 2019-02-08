@@ -22,6 +22,7 @@ package main
 
 import (
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io/ioutil"
 	"log"
@@ -29,6 +30,14 @@ import (
 	"strings"
 	"sync"
 	"time"
+)
+
+// ---------------------------------------------------------------------------------------
+//  constants
+// ---------------------------------------------------------------------------------------
+
+var (
+	ErrInvalidTtl = errors.New("ttl should be at least 1s")
 )
 
 // ---------------------------------------------------------------------------------------
@@ -91,6 +100,13 @@ func (c *CacheService) Request(body string, r *string) error {
 		}
 		for k, v := range request.Headers {
 			entry.Headers.Add(k, v)
+		}
+
+		// make sure the ttl is not too low
+		if entry.Ttl < time.Second {
+			log.Printf("rejeting request: ttl (%s) to low", entry.Ttl.String())
+			c.mutex.Unlock()
+			return ErrInvalidTtl
 		}
 
 		log.Printf("created new cache entry %s [url: %s, ttl: %s]",
