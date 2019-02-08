@@ -35,4 +35,4 @@ RUN chown nobody:nobody /usr/sbin/http_cache && \
     chmod +x /usr/sbin/http_cache
 
 EXPOSE 8000
-CMD /usr/sbin/storybot
+CMD /usr/sbin/http_cache
