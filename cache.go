@@ -21,14 +21,14 @@ package main
 // ---------------------------------------------------------------------------------------
 
 import (
+	"encoding/json"
+	"fmt"
 	"io/ioutil"
 	"log"
 	"net/http"
 	"strings"
 	"sync"
 	"time"
-
-	"github.com/valyala/fastjson"
 )
 
 // ---------------------------------------------------------------------------------------
@@ -36,19 +36,21 @@ import (
 // ---------------------------------------------------------------------------------------
 
 type CacheService struct {
-	Cache map[string]*CacheEntry
+	cache map[uint64]*CacheEntry
 	mutex sync.RWMutex
 }
 
 type CacheEntry struct {
-	Method string
-	Url    string
-	Body   string
-	Ttl    time.Duration
-	Error  error
+	Method  string
+	Url     string
+	Body    string
+	Headers http.Header
+	Ttl     time.Duration
 
 	Fetching sync.RWMutex
 	Response string
+	Error    error
+	Hash     string
 }
 
 // ---------------------------------------------------------------------------------------
@@ -57,7 +59,7 @@ type CacheEntry struct {
 
 func NewCacheService() *CacheService {
 	return &CacheService{
-		Cache: make(map[string]*CacheEntry),
+		cache: make(map[uint64]*CacheEntry),
 	}
 }
 
@@ -66,40 +68,48 @@ func NewCacheService() *CacheService {
 // ---------------------------------------------------------------------------------------
 
 func (c *CacheService) Request(body string, r *string) error {
-	// parse the command
-	cmd, err := fastjson.Parse(body)
+	// parse the request
+	var request CmdRequest
+	err := json.Unmarshal([]byte(body), &request)
 	if err != nil {
 		return err
 	}
+	id := request.Hash()
 
-	method := string(cmd.GetStringBytes("method"))
-	url := string(cmd.GetStringBytes("url"))
-	ttl := time.Duration(cmd.GetInt("ttl")) * time.Second
-	reqBody := string(cmd.GetStringBytes("body"))
-	log.Println(cmd)
-
+	// check if there is already a cache entry present -> if not create a new one
 	c.mutex.Lock()
-	entry, ok := c.Cache[url]
+	entry, ok := c.cache[id]
 	if !ok {
+		// construct the new cache entry object
 		entry = &CacheEntry{
-			Method: strings.ToUpper(method),
-			Body:   reqBody,
-			Url:    url,
-			Ttl:    ttl,
+			Method:  strings.ToUpper(request.Method),
+			Url:     request.Url,
+			Headers: make(http.Header),
+			Body:    request.Body,
+			Ttl:     time.Duration(request.Ttl) * time.Second,
+			Hash:    fmt.Sprintf("%x", id),
+		}
+		for k, v := range request.Headers {
+			entry.Headers.Add(k, v)
 		}
 
+		log.Printf("created new cache entry %s [url: %s, ttl: %s]",
+			entry.Hash, entry.Url, entry.Ttl.String())
+
+		// make the entry public, but lock it for accesss
+		// start the fetch task
 		entry.Fetching.Lock()
-		c.Cache[url] = entry
-		log.Printf("cache miss: creating new entry [url: %s, ttl: %s]", url, ttl.String())
+		c.cache[id] = entry
 		go entry.task()
 	}
 	c.mutex.Unlock()
 
+	// wait for the cache entry to be fully populated
 	entry.Fetching.RLock()
-	*r = entry.Response
-	log.Println("returning entry entry", url)
-	entry.Fetching.RUnlock()
+	defer entry.Fetching.RUnlock()
 
+	// return the response and error to the caller
+	*r = entry.Response
 	return entry.Error
 }
 
@@ -136,17 +146,12 @@ func (e *CacheEntry) task() {
 func (e *CacheEntry) update(client *http.Client) (string, error) {
 	start := time.Now()
 
-	log.Println("updating cache entry", e.Url)
-
 	// construct the new HTTP requests
 	req, err := http.NewRequest(e.Method, e.Url, strings.NewReader(e.Body))
 	if err != nil {
 		return "", err
 	}
-
-	// TODO: use headers sent by the calling application
-	req.Header.Add("Content-Type", "application/x-www-form-urlencoded")
-	req.Header.Add("User-Agent", "XOrbit.de Connect")
+	req.Header = e.Headers
 
 	// perform the http request
 	resp, err := client.Do(req)
@@ -162,7 +167,7 @@ func (e *CacheEntry) update(client *http.Client) (string, error) {
 		return "", err
 	}
 
-	log.Println("fetched", e.Url, "in", time.Since(start))
+	log.Println("fetched cache entry", e.Hash, "("+e.Url+")", "in", time.Since(start))
 
 	return string(body), nil
 }
