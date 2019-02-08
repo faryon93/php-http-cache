@@ -32,7 +32,7 @@ COPY --from=builder /tmp/http_cache /usr/sbin/http_cache
 
 # make binary executable
 RUN chown nobody:nobody /usr/sbin/http_cache && \
- chmod +x /usr/sbin/http_cache && \
+    chmod +x /usr/sbin/http_cache
 
 EXPOSE 8000
 CMD /usr/sbin/storybot
