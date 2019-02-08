@@ -25,11 +25,12 @@ import (
 	"errors"
 	"fmt"
 	"io/ioutil"
-	"log"
 	"net/http"
 	"strings"
 	"sync"
 	"time"
+
+	"github.com/sirupsen/logrus"
 )
 
 // ---------------------------------------------------------------------------------------
@@ -104,12 +105,12 @@ func (c *CacheService) Request(body string, r *string) error {
 
 		// make sure the ttl is not too low
 		if entry.Ttl < time.Second {
-			log.Printf("rejeting request: ttl (%s) to low", entry.Ttl.String())
+			logrus.Warnf("rejeting request: ttl (%s) to low", entry.Ttl.String())
 			c.mutex.Unlock()
 			return ErrInvalidTtl
 		}
 
-		log.Printf("created new cache entry %s [url: %s, ttl: %s]",
+		logrus.Infof("created new cache entry %s [url: %s, ttl: %s]",
 			entry.Hash, entry.Url, entry.Ttl.String())
 
 		// make the entry public, but lock it for accesss
@@ -141,7 +142,8 @@ func (e *CacheEntry) task() {
 		// update
 		response, err := e.update(&client)
 		if err != nil {
-			log.Println("failed to fetch url", err.Error())
+			logrus.Errorf("failed to fetch cache entry %s: %s",
+				e.Hash, err.Error())
 		}
 
 		// on the first run of the task the mutex is
@@ -179,11 +181,10 @@ func (e *CacheEntry) update(client *http.Client) (string, error) {
 	// read the http servers response into a string
 	body, err := ioutil.ReadAll(resp.Body)
 	if err != nil {
-		log.Println("failed to read body")
 		return "", err
 	}
 
-	log.Println("fetched cache entry", e.Hash, "("+e.Url+")", "in", time.Since(start))
+	logrus.Infof("fetched cache entry %s in %s", e.Hash, time.Since(start))
 
 	return string(body), nil
 }

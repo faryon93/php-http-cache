@@ -21,10 +21,21 @@ package main
 // ---------------------------------------------------------------------------------------
 
 import (
+	"flag"
 	"net"
 	"net/rpc"
+	"os"
 
+	"github.com/sirupsen/logrus"
 	"github.com/spiral/goridge"
+)
+
+// ---------------------------------------------------------------------------------------
+//  variables
+// ---------------------------------------------------------------------------------------
+
+var (
+	ForceColors bool
 )
 
 // ---------------------------------------------------------------------------------------
@@ -32,6 +43,14 @@ import (
 // ---------------------------------------------------------------------------------------
 
 func main() {
+	flag.BoolVar(&ForceColors, "colors", false, "force logging with colors")
+	flag.Parse()
+
+	// setup logger
+	formater := logrus.TextFormatter{ForceColors: ForceColors, DisableColors: !ForceColors}
+	logrus.SetFormatter(&formater)
+	logrus.SetOutput(os.Stdout)
+
 	ln, err := net.Listen("tcp", ":6001")
 	if err != nil {
 		panic(err)
