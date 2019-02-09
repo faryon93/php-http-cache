@@ -22,13 +22,13 @@ package main
 
 import (
 	"flag"
-	"github.com/prometheus/client_golang/prometheus/promhttp"
 	"net"
 	"net/http"
 	"net/rpc"
 	"os"
 	"time"
 
+	"github.com/prometheus/client_golang/prometheus/promhttp"
 	"github.com/sirupsen/logrus"
 	"github.com/spiral/goridge"
 )
@@ -59,6 +59,8 @@ func main() {
 	formater := logrus.TextFormatter{ForceColors: ForceColors, DisableColors: !ForceColors}
 	logrus.SetFormatter(&formater)
 	logrus.SetOutput(os.Stdout)
+
+	logrus.Infoln("starting", GetAppVersion())
 
 	ln, err := net.Listen("tcp", Listen)
 	if err != nil {
