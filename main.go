@@ -37,6 +37,7 @@ import (
 
 var (
 	ForceColors bool
+	Listen      string
 )
 
 // ---------------------------------------------------------------------------------------
@@ -48,6 +49,7 @@ func main() {
 
 	// command line arguments
 	flag.DurationVar(&cacheService.Timeout, "timeout", 2*time.Hour, "timeout for cache entrys")
+	flag.StringVar(&Listen, "listen", ":6001", "rpc listen address")
 	flag.BoolVar(&ForceColors, "colors", false, "force logging with colors")
 	flag.Parse()
 
@@ -56,7 +58,7 @@ func main() {
 	logrus.SetFormatter(&formater)
 	logrus.SetOutput(os.Stdout)
 
-	ln, err := net.Listen("tcp", ":6001")
+	ln, err := net.Listen("tcp", Listen)
 	if err != nil {
 		panic(err)
 	}
@@ -71,6 +73,7 @@ func main() {
 		if err != nil {
 			continue
 		}
+
 		go rpc.ServeCodec(goridge.NewCodec(conn))
 	}
 }
