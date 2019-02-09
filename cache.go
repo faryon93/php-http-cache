@@ -24,6 +24,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"github.com/faryon93/php-http-cache/metric"
 	"io/ioutil"
 	"net/http"
 	"strings"
@@ -135,6 +136,12 @@ func (c *CacheService) Request(body string, r *string) error {
 		entry.Fetching.Lock()
 		c.cache[id] = entry
 		go entry.task(c)
+
+		metric.CacheSize.Inc()
+		metric.CacheMiss.Inc()
+
+	} else {
+		metric.CacheHit.Inc()
 	}
 	c.mutex.Unlock()
 
@@ -161,6 +168,7 @@ func (e *CacheEntry) task(service *CacheService) {
 		if service.Timeout > 0 && time.Now().After(e.LastAccess.Add(service.Timeout)) {
 			service.mutex.Lock()
 			delete(service.cache, e.Id)
+			metric.CacheSize.Dec()
 			service.mutex.Unlock()
 
 			logrus.Infof("entry %s timed out: purging from cache", e.Hash)

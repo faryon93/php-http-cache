@@ -1,4 +1,4 @@
-package main
+package metric
 
 // php-http-cache
 // Copyright (C) 2019 Maximilian Pachl
@@ -21,67 +21,48 @@ package main
 // ---------------------------------------------------------------------------------------
 
 import (
-	"flag"
-	"github.com/prometheus/client_golang/prometheus/promhttp"
-	"net"
-	"net/http"
-	"net/rpc"
-	"os"
-	"time"
-
-	"github.com/sirupsen/logrus"
-	"github.com/spiral/goridge"
+	"github.com/prometheus/client_golang/prometheus"
 )
 
 // ---------------------------------------------------------------------------------------
-//  variables
+//  constants
+// ---------------------------------------------------------------------------------------
+
+const (
+	Namespace = "http_cache"
+)
+
+// ---------------------------------------------------------------------------------------
+//  imports
 // ---------------------------------------------------------------------------------------
 
 var (
-	ForceColors bool
-	Listen      string
+	CacheHit = prometheus.NewCounter(prometheus.CounterOpts{
+		Namespace: Namespace,
+		Name:      "hit",
+		Help:      "Total number of cache hits.",
+	})
+
+	CacheMiss = prometheus.NewCounter(prometheus.CounterOpts{
+		Namespace: Namespace,
+		Name:      "miss",
+		Help:      "Total number of cache misses.",
+	})
+
+	CacheSize = prometheus.NewGauge(prometheus.GaugeOpts{
+		Namespace: Namespace,
+		Name:      "size",
+		Help:      "Number of entries in the cache table.",
+	})
 )
 
 // ---------------------------------------------------------------------------------------
-//  application entry
+//  initializer
 // ---------------------------------------------------------------------------------------
 
-func main() {
-	cacheService := NewCacheService()
-
-	// command line arguments
-	flag.DurationVar(&cacheService.Timeout, "timeout", 2*time.Hour, "timeout for cache entrys")
-	flag.StringVar(&Listen, "listen", ":6001", "rpc listen address")
-	flag.BoolVar(&ForceColors, "colors", false, "force logging with colors")
-	flag.Parse()
-
-	// setup logger
-	formater := logrus.TextFormatter{ForceColors: ForceColors, DisableColors: !ForceColors}
-	logrus.SetFormatter(&formater)
-	logrus.SetOutput(os.Stdout)
-
-	ln, err := net.Listen("tcp", Listen)
-	if err != nil {
-		panic(err)
-	}
-
-	err = rpc.RegisterName("Cache", cacheService)
-	if err != nil {
-		panic(err)
-	}
-
-	go func() {
-		// Expose the registered metrics via HTTP.
-		http.Handle("/metrics", promhttp.Handler())
-		logrus.Errorln(http.ListenAndServe(":6002", nil))
-	}()
-
-	for {
-		conn, err := ln.Accept()
-		if err != nil {
-			continue
-		}
-
-		go rpc.ServeCodec(goridge.NewCodec(conn))
-	}
+func init() {
+	// Register the summary and the histogram with Prometheus's default registry.
+	prometheus.MustRegister(CacheHit)
+	prometheus.MustRegister(CacheMiss)
+	prometheus.MustRegister(CacheSize)
 }
