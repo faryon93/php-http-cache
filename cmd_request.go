@@ -21,6 +21,10 @@ package main
 // ---------------------------------------------------------------------------------------
 
 import (
+	"fmt"
+	"net/http"
+	"strings"
+
 	"github.com/cespare/xxhash"
 )
 
@@ -47,4 +51,19 @@ func (r *CmdRequest) Hash() uint64 {
 	}
 
 	return xxhash.Sum64String(r.Method + r.Url + r.Body + headers)
+}
+
+func (r *CmdRequest) GetHeaders() (http.Header, error) {
+	headers := make(http.Header)
+
+	for _, header := range r.Headers {
+		h := strings.Split(header, ":")
+		if len(h) != 2 {
+			return nil, fmt.Errorf("header \"%s\" is badly formated", header)
+		}
+
+		headers.Add(strings.TrimSpace(h[0]), strings.TrimSpace(h[1]))
+	}
+
+	return headers, nil
 }

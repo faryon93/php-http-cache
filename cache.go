@@ -23,7 +23,6 @@ package main
 import (
 	"encoding/json"
 	"errors"
-	"fmt"
 	"io/ioutil"
 	"net/http"
 	"strings"
@@ -86,7 +85,6 @@ func (c *CacheService) Request(body string, r *string) error {
 		entry = &CacheEntry{
 			Method:     strings.ToUpper(request.Method),
 			Url:        request.Url,
-			Headers:    make(http.Header),
 			Body:       request.Body,
 			Ttl:        time.Duration(request.Ttl) * time.Second,
 			Id:         id,
@@ -94,21 +92,17 @@ func (c *CacheService) Request(body string, r *string) error {
 		}
 
 		// construct the header map
-		for i, header := range request.Headers {
-			h := strings.Split(header, ":")
-			if len(h) != 2 {
-				logrus.Warnf("rejeting request: invalid header \"%s\"", header)
-				c.mutex.Unlock()
-				return fmt.Errorf("header[%d] is badly formated", i)
-			}
-
-			entry.Headers.Add(strings.TrimSpace(h[0]), strings.TrimSpace(h[1]))
+		entry.Headers, err = request.GetHeaders()
+		if err != nil {
+			c.mutex.Unlock()
+			logrus.Errorln("rejecting request:", err.Error())
+			return err
 		}
 
 		// make sure the ttl is not too low
 		if entry.Ttl < time.Second {
-			logrus.Warnf("rejeting request: ttl (%s) to low", entry.Ttl.String())
 			c.mutex.Unlock()
+			logrus.Warnf("rejeting request: ttl (%s) to low", entry.Ttl.String())
 			return ErrInvalidTtl
 		}
 
