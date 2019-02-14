@@ -24,7 +24,6 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"github.com/faryon93/php-http-cache/metric"
 	"io/ioutil"
 	"net/http"
 	"strings"
@@ -32,6 +31,8 @@ import (
 	"time"
 
 	"github.com/sirupsen/logrus"
+
+	"github.com/faryon93/php-http-cache/metric"
 )
 
 // ---------------------------------------------------------------------------------------
@@ -51,22 +52,6 @@ type CacheService struct {
 	mutex sync.RWMutex
 
 	Timeout time.Duration
-}
-
-type CacheEntry struct {
-	Method  string
-	Url     string
-	Body    string
-	Headers http.Header
-	Ttl     time.Duration
-
-	LastAccess time.Time
-
-	Fetching sync.RWMutex
-	Response string
-	Error    error
-	Hash     string
-	Id       uint64
 }
 
 // ---------------------------------------------------------------------------------------
@@ -104,7 +89,6 @@ func (c *CacheService) Request(body string, r *string) error {
 			Headers:    make(http.Header),
 			Body:       request.Body,
 			Ttl:        time.Duration(request.Ttl) * time.Second,
-			Hash:       fmt.Sprintf("%x", id),
 			Id:         id,
 			LastAccess: time.Now(),
 		}
@@ -129,7 +113,7 @@ func (c *CacheService) Request(body string, r *string) error {
 		}
 
 		logrus.Infof("created new cache entry %s [url: %s, ttl: %s]",
-			entry.Hash, entry.Url, entry.Ttl.String())
+			entry.String(), entry.Url, entry.Ttl.String())
 
 		// make the entry public, but lock it for accesss
 		// start the fetch task
@@ -171,7 +155,7 @@ func (e *CacheEntry) task(service *CacheService) {
 			metric.CacheSize.Dec()
 			service.mutex.Unlock()
 
-			logrus.Infof("entry %s timed out: purging from cache", e.Hash)
+			logrus.Infof("entry %s timed out: purging from cache", e.String())
 			return
 		}
 
@@ -179,7 +163,7 @@ func (e *CacheEntry) task(service *CacheService) {
 		response, err := e.fetch(&client)
 		if err != nil {
 			logrus.Errorf("failed to fetch cache entry %s: %s",
-				e.Hash, err.Error())
+				e.String(), err.Error())
 		}
 
 		// on the first run of the task the mutex is
