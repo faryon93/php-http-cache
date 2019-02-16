@@ -1,4 +1,4 @@
-package main
+package rpc
 
 // php-http-cache
 // Copyright (C) 2019 Maximilian Pachl

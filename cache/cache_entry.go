@@ -1,4 +1,4 @@
-package main
+package cache
 
 // php-http-cache
 // Copyright (C) 2019 Maximilian Pachl
@@ -21,8 +21,7 @@ package main
 // ---------------------------------------------------------------------------------------
 
 import (
-	"encoding/json"
-	"errors"
+	"fmt"
 	"io/ioutil"
 	"net/http"
 	"strings"
@@ -30,129 +29,48 @@ import (
 	"time"
 
 	"github.com/sirupsen/logrus"
-
-	"github.com/faryon93/php-http-cache/metric"
-)
-
-// ---------------------------------------------------------------------------------------
-//  constants
-// ---------------------------------------------------------------------------------------
-
-var (
-	ErrInvalidTtl = errors.New("ttl should be at least 1s")
 )
 
 // ---------------------------------------------------------------------------------------
 //  types
 // ---------------------------------------------------------------------------------------
 
-type CacheService struct {
-	cache map[uint64]*CacheEntry
-	mutex sync.RWMutex
+type Entry struct {
+	Method  string
+	Url     string
+	Body    string
+	Headers http.Header
+	Ttl     time.Duration
 
-	Timeout time.Duration
-}
+	LastAccess time.Time
 
-// ---------------------------------------------------------------------------------------
-//  public functions
-// ---------------------------------------------------------------------------------------
-
-func NewCacheService() *CacheService {
-	return &CacheService{
-		cache: make(map[uint64]*CacheEntry),
-	}
+	Fetching sync.RWMutex
+	Response string
+	Error    error
+	Id       uint64
 }
 
 // ---------------------------------------------------------------------------------------
 //  public members
 // ---------------------------------------------------------------------------------------
 
-func (c *CacheService) Request(body string, r *string) error {
-	// parse the request
-	var request CmdRequest
-	err := json.Unmarshal([]byte(body), &request)
-	if err != nil {
-		logrus.Warnln("failed to decode command:", err.Error())
-		return err
-	}
-	id := request.Hash()
-
-	// check if there is already a cache entry present -> if not create a new one
-	c.mutex.Lock()
-	entry, ok := c.cache[id]
-	if !ok {
-		// construct the new cache entry object
-		entry = &CacheEntry{
-			Method:     strings.ToUpper(request.Method),
-			Url:        request.Url,
-			Body:       request.Body,
-			Ttl:        time.Duration(request.Ttl) * time.Second,
-			Id:         id,
-			LastAccess: time.Now(),
-			Response:   "",
-		}
-
-		// construct the header map
-		entry.Headers, err = request.GetHeaders()
-		if err != nil {
-			c.mutex.Unlock()
-			logrus.Errorln("rejecting request:", err.Error())
-			return err
-		}
-
-		// make sure the ttl is not too low
-		if entry.Ttl < time.Second {
-			c.mutex.Unlock()
-			logrus.Warnf("rejeting request: ttl (%s) to low", entry.Ttl.String())
-			return ErrInvalidTtl
-		}
-
-		logrus.Infof("created new cache entry %s [url: %s, ttl: %s]",
-			entry.String(), entry.Url, entry.Ttl.String())
-
-		// make the entry public, but lock it for accesss
-		// start the fetch task
-		entry.Fetching.Lock()
-		c.cache[id] = entry
-		go entry.task(c)
-
-		metric.CacheSize.Inc()
-		metric.CacheMiss.Inc()
-
-	} else {
-		metric.CacheHit.Inc()
-	}
-	c.mutex.Unlock()
-
-	// wait for the cache entry to be fully populated
-	entry.Fetching.RLock()
-	defer entry.Fetching.RUnlock()
-
-	// return the response and error to the caller
-	entry.LastAccess = time.Now()
-	*r = entry.Response
-	return entry.Error
-}
-
-func (c *CacheService) Remove(id uint64) {
-	c.mutex.Lock()
-	delete(c.cache, id)
-	metric.CacheSize.Dec()
-	c.mutex.Unlock()
+func (c *Entry) String() string {
+	return fmt.Sprintf("%x", c.Id)
 }
 
 // ---------------------------------------------------------------------------------------
 //  private members
 // ---------------------------------------------------------------------------------------
 
-func (c *CacheEntry) task(service *CacheService) {
+// Task periodically updates the requests response in the cache.
+func (c *Entry) task(service *Service) {
 	first := true
 	client := http.Client{}
 
 	for {
 		// stop the background fetching task after the configured timeout
 		if service.Timeout > 0 && time.Now().After(c.LastAccess.Add(service.Timeout)) {
-			service.Remove(c.Id)
+			service.remove(c.Id)
 			logrus.Infof("entry %s timed out: purging from cache", c.String())
 			return
 		}
@@ -193,7 +111,7 @@ func (c *CacheEntry) task(service *CacheService) {
 	}
 }
 
-func (c *CacheEntry) fetch(client *http.Client) (string, error) {
+func (c *Entry) fetch(client *http.Client) (string, error) {
 	// construct the new HTTP requests
 	req, err := http.NewRequest(c.Method, c.Url, strings.NewReader(c.Body))
 	if err != nil {

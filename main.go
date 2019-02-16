@@ -22,6 +22,7 @@ package main
 
 import (
 	"flag"
+	"github.com/faryon93/php-http-cache/cache"
 	"net"
 	"net/http"
 	"net/rpc"
@@ -47,7 +48,7 @@ var (
 // ---------------------------------------------------------------------------------------
 
 func main() {
-	cacheService := NewCacheService()
+	cacheService := cache.NewService()
 
 	// command line arguments
 	flag.DurationVar(&cacheService.Timeout, "timeout", 2*time.Hour, "timeout for cache entrys")
