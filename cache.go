@@ -89,6 +89,7 @@ func (c *CacheService) Request(body string, r *string) error {
 			Ttl:        time.Duration(request.Ttl) * time.Second,
 			Id:         id,
 			LastAccess: time.Now(),
+			Response:   "",
 		}
 
 		// construct the header map
@@ -133,6 +134,13 @@ func (c *CacheService) Request(body string, r *string) error {
 	return entry.Error
 }
 
+func (c *CacheService) Remove(id uint64) {
+	c.mutex.Lock()
+	delete(c.cache, id)
+	metric.CacheSize.Dec()
+	c.mutex.Unlock()
+}
+
 // ---------------------------------------------------------------------------------------
 //  private members
 // ---------------------------------------------------------------------------------------
@@ -144,11 +152,7 @@ func (e *CacheEntry) task(service *CacheService) {
 	for {
 		// stop the background fetching task after the configured timeout
 		if service.Timeout > 0 && time.Now().After(e.LastAccess.Add(service.Timeout)) {
-			service.mutex.Lock()
-			delete(service.cache, e.Id)
-			metric.CacheSize.Dec()
-			service.mutex.Unlock()
-
+			service.Remove(e.Id)
 			logrus.Infof("entry %s timed out: purging from cache", e.String())
 			return
 		}
@@ -166,8 +170,22 @@ func (e *CacheEntry) task(service *CacheService) {
 		if !first {
 			e.Fetching.Lock()
 		}
-		e.Error = err
-		e.Response = response
+
+		// no error while fetching the response of the
+		// requested resource
+		if err == nil {
+			e.Error = nil
+			e.Response = response
+
+		} else {
+			// forward the fetching error only if there
+			// isn't a cached version of the request
+			if e.Response != "" {
+				e.Error = err
+				e.Response = ""
+			}
+		}
+
 		e.Fetching.Unlock()
 
 		first = false
