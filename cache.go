@@ -145,61 +145,61 @@ func (c *CacheService) Remove(id uint64) {
 //  private members
 // ---------------------------------------------------------------------------------------
 
-func (e *CacheEntry) task(service *CacheService) {
+func (c *CacheEntry) task(service *CacheService) {
 	first := true
 	client := http.Client{}
 
 	for {
 		// stop the background fetching task after the configured timeout
-		if service.Timeout > 0 && time.Now().After(e.LastAccess.Add(service.Timeout)) {
-			service.Remove(e.Id)
-			logrus.Infof("entry %s timed out: purging from cache", e.String())
+		if service.Timeout > 0 && time.Now().After(c.LastAccess.Add(service.Timeout)) {
+			service.Remove(c.Id)
+			logrus.Infof("entry %s timed out: purging from cache", c.String())
 			return
 		}
 
 		// fetch a fresh copy of the request body
-		response, err := e.fetch(&client)
+		response, err := c.fetch(&client)
 		if err != nil {
 			logrus.Errorf("failed to fetch cache entry %s: %s",
-				e.String(), err.Error())
+				c.String(), err.Error())
 		}
 
 		// on the first run of the task the mutex is
 		// already locked -> we dont need to lock it
 		// ourself.
 		if !first {
-			e.Fetching.Lock()
+			c.Fetching.Lock()
 		}
 
 		// no error while fetching the response of the
 		// requested resource
 		if err == nil {
-			e.Error = nil
-			e.Response = response
+			c.Error = nil
+			c.Response = response
 
 		} else {
 			// forward the fetching error only if there
 			// isn't a cached version of the request
-			if e.Response != "" {
-				e.Error = err
-				e.Response = ""
+			if c.Response != "" {
+				c.Error = err
+				c.Response = ""
 			}
 		}
 
-		e.Fetching.Unlock()
+		c.Fetching.Unlock()
 
 		first = false
-		time.Sleep(e.Ttl)
+		time.Sleep(c.Ttl)
 	}
 }
 
-func (e *CacheEntry) fetch(client *http.Client) (string, error) {
+func (c *CacheEntry) fetch(client *http.Client) (string, error) {
 	// construct the new HTTP requests
-	req, err := http.NewRequest(e.Method, e.Url, strings.NewReader(e.Body))
+	req, err := http.NewRequest(c.Method, c.Url, strings.NewReader(c.Body))
 	if err != nil {
 		return "", err
 	}
-	req.Header = e.Headers
+	req.Header = c.Headers
 
 	// perform the http request
 	resp, err := client.Do(req)
