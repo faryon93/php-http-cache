@@ -54,8 +54,12 @@ type Entry struct {
 //  public members
 // ---------------------------------------------------------------------------------------
 
-func (c *Entry) String() string {
-	return fmt.Sprintf("%x", c.Id)
+func (e *Entry) IsExpired(timeout time.Duration) bool {
+	return time.Now().After(e.LastAccess.Add(timeout))
+}
+
+func (e *Entry) String() string {
+	return fmt.Sprintf("%x", e.Id)
 }
 
 // ---------------------------------------------------------------------------------------
@@ -63,61 +67,61 @@ func (c *Entry) String() string {
 // ---------------------------------------------------------------------------------------
 
 // Task periodically updates the requests response in the cache.
-func (c *Entry) task(service *Service) {
+func (e *Entry) task(service *Service) {
 	first := true
 	client := http.Client{}
 
 	for {
 		// stop the background fetching task after the configured timeout
-		if service.Timeout > 0 && time.Now().After(c.LastAccess.Add(service.Timeout)) {
-			service.remove(c.Id)
-			logrus.Infof("entry %s timed out: purging from cache", c.String())
+		if service.Timeout > 0 && e.IsExpired(service.Timeout) {
+			service.remove(e.Id)
+			logrus.Infof("entry %s timed out: purging from cache", e.String())
 			return
 		}
 
 		// fetch a fresh copy of the request body
-		response, err := c.fetch(&client)
+		response, err := e.fetch(&client)
 		if err != nil {
 			logrus.Errorf("failed to fetch cache entry %s: %s",
-				c.String(), err.Error())
+				e.String(), err.Error())
 		}
 
 		// on the first run of the task the mutex is
 		// already locked -> we dont need to lock it
 		// ourself.
 		if !first {
-			c.Fetching.Lock()
+			e.Fetching.Lock()
 		}
 
 		// no error while fetching the response of the
 		// requested resource
 		if err == nil {
-			c.Error = nil
-			c.Response = response
+			e.Error = nil
+			e.Response = response
 
 		} else {
 			// forward the fetching error only if there
 			// isn't a cached version of the request
-			if c.Response != "" {
-				c.Error = err
-				c.Response = ""
+			if e.Response != "" {
+				e.Error = err
+				e.Response = ""
 			}
 		}
 
-		c.Fetching.Unlock()
+		e.Fetching.Unlock()
 
 		first = false
-		time.Sleep(c.Ttl)
+		time.Sleep(e.Ttl)
 	}
 }
 
-func (c *Entry) fetch(client *http.Client) (string, error) {
+func (e *Entry) fetch(client *http.Client) (string, error) {
 	// construct the new HTTP requests
-	req, err := http.NewRequest(c.Method, c.Url, strings.NewReader(c.Body))
+	req, err := http.NewRequest(e.Method, e.Url, strings.NewReader(e.Body))
 	if err != nil {
 		return "", err
 	}
-	req.Header = c.Headers
+	req.Header = e.Headers
 
 	// perform the http request
 	resp, err := client.Do(req)
