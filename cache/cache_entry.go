@@ -98,11 +98,10 @@ func (e *Entry) task(service *Service) {
 		if err == nil {
 			e.Error = nil
 			e.Response = response
-
 		} else {
 			// forward the fetching error only if there
 			// isn't a cached version of the request
-			if e.Response != "" {
+			if e.Response == "" {
 				e.Error = err
 				e.Response = ""
 			}
