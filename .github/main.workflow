@@ -1,6 +1,6 @@
 workflow "Build" {
-  on = "push"
   resolves = ["Publish on Docker Registry"]
+  on = "release"
 }
 
 action "Build Alpine" {
