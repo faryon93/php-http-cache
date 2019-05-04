@@ -29,6 +29,8 @@ import (
 	"time"
 
 	"github.com/sirupsen/logrus"
+
+	"github.com/faryon93/php-http-cache/metric"
 )
 
 // ---------------------------------------------------------------------------------------
@@ -115,9 +117,21 @@ func (e *Entry) task(service *Service) {
 }
 
 func (e *Entry) fetch(client *http.Client) (string, error) {
+	fetchFailure := metric.FetchFailure.WithLabelValues(e.Url)
+	fetchSuccess := metric.FetchSuccess.WithLabelValues(e.Url)
+	fetchLatency := metric.FetchLatency.WithLabelValues(e.Url)
+
+	// observe the latency of the fetch call
+	start := time.Now()
+	defer func() {
+		latencySec := time.Since(start).Seconds()
+		fetchLatency.Observe(latencySec * 1000.0)
+	}()
+
 	// construct the new HTTP requests
 	req, err := http.NewRequest(e.Method, e.Url, strings.NewReader(e.Body))
 	if err != nil {
+		fetchFailure.Inc()
 		return "", err
 	}
 	req.Header = e.Headers
@@ -125,6 +139,7 @@ func (e *Entry) fetch(client *http.Client) (string, error) {
 	// perform the http request
 	resp, err := client.Do(req)
 	if err != nil {
+		fetchFailure.Inc()
 		return "", err
 	}
 	defer resp.Body.Close()
@@ -132,8 +147,11 @@ func (e *Entry) fetch(client *http.Client) (string, error) {
 	// read the http servers response into a string
 	body, err := ioutil.ReadAll(resp.Body)
 	if err != nil {
+		fetchFailure.Inc()
 		return "", err
 	}
+
+	fetchSuccess.Inc()
 
 	return string(body), nil
 }

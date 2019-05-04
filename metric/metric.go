@@ -54,6 +54,25 @@ var (
 		Name:      "size",
 		Help:      "Number of entries in the cache table.",
 	})
+
+	FetchSuccess = prometheus.NewCounterVec(prometheus.CounterOpts{
+		Namespace: Namespace,
+		Name:      "fetch_success",
+		Help:      "Total number successfull fetch operations",
+	}, []string{"url"})
+
+	FetchFailure = prometheus.NewCounterVec(prometheus.CounterOpts{
+		Namespace: Namespace,
+		Name:      "fetch_failure",
+		Help:      "Total number failed fetch operations",
+	}, []string{"url"})
+
+	FetchLatency = prometheus.NewHistogramVec(prometheus.HistogramOpts{
+		Namespace: Namespace,
+		Name:      "fetch_latency",
+		Help:      "Latency of http fetch in milliseconds",
+		Buckets:   []float64{10, 25, 50, 75, 100, 120, 150, 200, 250, 300, 350, 400},
+	}, []string{"url"})
 )
 
 // ---------------------------------------------------------------------------------------
@@ -65,4 +84,7 @@ func init() {
 	prometheus.MustRegister(CacheHit)
 	prometheus.MustRegister(CacheMiss)
 	prometheus.MustRegister(CacheSize)
+	prometheus.MustRegister(FetchSuccess)
+	prometheus.MustRegister(FetchFailure)
+	prometheus.MustRegister(FetchLatency)
 }
