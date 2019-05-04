@@ -81,6 +81,8 @@ func (e *Entry) task(service *Service) {
 			return
 		}
 
+		start := time.Now()
+
 		// fetch a fresh copy of the request body
 		response, err := e.fetch(&client)
 		if err != nil {
@@ -93,6 +95,10 @@ func (e *Entry) task(service *Service) {
 		// ourself.
 		if !first {
 			e.Fetching.Lock()
+
+		} else {
+			logrus.Infof("inital fetch for entry %s took: %s",
+				e.String(), time.Since(start))
 		}
 
 		// no error while fetching the response of the
