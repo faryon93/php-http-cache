@@ -1,4 +1,5 @@
-#php-http-cache
+# About
+
 A small background HTTP fetcher for PHP utilizing [goridge](https://github.com/spiral/goridge) as a high performance IPC bridge.
 
 The request body is refreshed every `ttl` seconds.
